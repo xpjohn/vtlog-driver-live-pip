@@ -242,11 +242,6 @@ tr.users:not(#user-${steamId}) {
   display: none !important;
 }
 
-body:has(#user-${steamId} [id$="td-progress"]:not(.d-none)) .vh-live-card {
-  opacity: 1 !important;
-  pointer-events: auto !important;
-}
-
 html, body, .vh-live-wrap, .vh-live-table-wrap {
   background: transparent !important;
   margin: 0 !important;
@@ -274,8 +269,8 @@ tr .d-none, thead, #offline_message, .data-table {
   position: relative !important;
   display: flex !important;
   justify-content: center !important;
-  opacity: 0 !important;
-  pointer-events: none !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
   transition: opacity 1000ms ease !important;
 }
 
