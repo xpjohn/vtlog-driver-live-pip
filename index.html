@@ -27,30 +27,6 @@
       margin-left: .5rem;
     }
 
-    .bookmarklet-link {
-      display: inline-block;
-      padding: 10px 20px;
-      background: #2563eb;
-      color: #fff;
-      border-radius: 6px;
-      text-decoration: none;
-      font-weight: 600;
-      font-size: 1rem;
-      cursor: grab;
-    }
-
-    .bookmarklet-link:active {
-      cursor: grabbing;
-    }
-
-    .bookmarklet-link.disabled {
-      background: #666;
-      color: #aaa;
-      cursor: not-allowed;
-      pointer-events: none;
-      opacity: 0.6;
-    }
-
     ol li {
       margin-bottom: .5rem;
     }
@@ -73,6 +49,7 @@
       width: 100%;
       font-family: monospace;
       box-sizing: border-box;
+      margin-top: 4px;
     }
 
     .steam-input:focus {
@@ -102,6 +79,75 @@
       color: #93c5fd;
     }
 
+    .opacity-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 4px;
+    }
+
+    .opacity-row input[type=range] {
+      flex: 1;
+      accent-color: #2563eb;
+    }
+
+    .opacity-row code {
+      font-size: .9rem;
+      color: #93c5fd;
+      min-width: 28px;
+    }
+
+    .status-ok {
+      color: #4ade80;
+      font-size: .82rem;
+      margin-top: 3px;
+    }
+
+    .status-err {
+      color: #f87171;
+      font-size: .82rem;
+      margin-top: 3px;
+    }
+
+    .hint {
+      font-size: .8rem;
+      color: #888;
+      margin-top: 3px;
+    }
+
+    .bookmarklet-link {
+      display: inline-block;
+      padding: 10px 20px;
+      background: #2563eb;
+      color: #fff;
+      border-radius: 6px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 1rem;
+      cursor: grab;
+      margin-top: 6px;
+    }
+
+    .bookmarklet-link:active {
+      cursor: grabbing;
+    }
+
+    .bookmarklet-link.disabled {
+      background: #666;
+      color: #aaa;
+      cursor: not-allowed;
+      pointer-events: none;
+      opacity: 0.6;
+    }
+
+    kbd {
+      background: #333;
+      border: 1px solid #555;
+      border-radius: 3px;
+      padding: 1px 5px;
+      font-size: .85rem;
+    }
+
     a {
       color: #60a5fa;
       text-decoration: none;
@@ -115,59 +161,344 @@
 
 <body>
 
-  <h1>VTLOG Live Driver PiP Bookmarklet <span class="version">v1.0.3</span></h1>
-  
+  <h1>VTLOG Live Driver PiP Bookmarklet <span class="version">v1.2.0</span></h1>
+
   <p>Opens a Picture-in-Picture window showing your live VTLOG job data.</p>
 
-  <h2>Install</h2>
+  <h2>1. Configure</h2>
   <ol>
-    <li>Enter your VTLOG profile link:
-      <br><input type="text" id="steamInput" class="steam-input" value=""
-        placeholder="https://vtlog.net/profile/76561198123484666">
+    <li>
+      Enter your VTLOG profile link:
+      <input type="text" id="steamInput" class="steam-input" placeholder="https://vtlog.net/profile/76561198123484666">
+      <div id="steamErr" class="status-err" style="display:none">Enter a valid VTLOG profile URL or Steam ID64.</div>
+      <div id="steamOk" class="status-ok" style="display:none"></div>
     </li>
-    <li>Pick a background color:
+    <li>
+      Enter your VTC logo image URL <em style="color:#666">(optional)</em>:
+      <input type="text" id="logoInput" class="steam-input" placeholder="https://example.com/logo.png">
+      <div class="hint">Any direct image URL. Leave blank to hide the VTC logo.</div>
+    </li>
+    <li>
+      Pick a background color:
       <div class="color-row">
         <input type="color" id="bgColor" value="#121212">
         <code id="bgColorLabel">#121212</code>
       </div>
     </li>
-    <li>Make sure your bookmarks bar is visible (<kbd>Ctrl+Shift+B</kbd>).</li>
-    <li>Drag this button link to your bookmarks bar:</li>
-    <a class="bookmarklet-link" id="bookmarklet" href="#">VTLOG Live PiP</a>
+    <li>
+      Set background opacity:
+      <div class="opacity-row">
+        <input type="range" id="bgOpacity" min="0" max="1" step="0.05" value="0.8">
+        <code id="bgOpacityLabel">0.8</code>
+      </div>
+    </li>
   </ol>
 
-  
+  <h2>2. Install</h2>
+  <ol>
+    <li>Make sure your bookmarks bar is visible (<kbd>Ctrl+Shift+B</kbd>).</li>
+    <li>Drag this button link to your bookmarks bar:<br>
+      <a class="bookmarklet-link" id="bookmarklet" href="#">VTLOG Live PiP</a>
+    </li>
+  </ol>
 
   <script>
-    // Build the bookmarklet href via JS to avoid HTML attribute encoding issues
+    function parseSteamId(raw) {
+      raw = raw.trim();
+      const mUrl = raw.match(/^(?:https?:\/\/)?(?:beta\.)?vtlog\.net\/profile\/(7656119\d{10})(?:\/.*)?$/);
+      if (mUrl) return mUrl[1];
+      const mId = raw.match(/^(7656119\d{10})$/);
+      if (mId) return mId[1];
+      return null;
+    }
+
+    function buildPipCss(steamId, bgHex, opacity, logoUrl) {
+      const r = parseInt(bgHex.slice(1, 3), 16);
+      const g = parseInt(bgHex.slice(3, 5), 16);
+      const b = parseInt(bgHex.slice(5, 7), 16);
+      const bg = `rgba(${r}, ${g}, ${b}, ${opacity})`;
+
+      const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+      const light = lum > 0.5;
+      const barTrack = light ? 'rgb(160 160 160 / 80%)' : 'rgb(80 80 80 / 80%)';
+      const barFill = light ? '#181818' : 'rgb(255 153 0)';
+      const speedBorder = light ? 'rgb(160, 160, 160)' : 'rgb(50, 50, 50)';
+      const lightExtra = light
+        ? `\n#list tr td:not(:nth-child(7)) * {\n  color: #181818 !important;\n}\n\n.vh-live-speed-val, .vh-live-speed-val.cruise {\n  color: #181818 !important;\n}\n\n.vh-live-card::before,\n.vh-live-card::after {\n  filter: brightness(0) !important;\n}`
+        : '';
+
+      const hasLogo = logoUrl && logoUrl.trim().length > 0;
+      const padLeft = hasLogo ? '78px' : '50px';
+      const logoRule = hasLogo
+        ? `.vh-live-card::after {\n  left: 42px !important;\n  background: url('${logoUrl.trim()}') no-repeat center / contain !important;\n}`
+        : `.vh-live-card::after {\n  display: none !important;\n}`;
+
+      return `/* ==========================================
+   VTLog Stream Overlay - Job Live Data (PiP)
+   Overlay Size: 1024 x 75px
+   ========================================== */
+
+tr.users:not(#user-${steamId}) {
+  display: none !important;
+}
+
+body:has(#user-${steamId} [id$="td-progress"]:not(.d-none)) .vh-live-card {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+html, body, .vh-live-wrap, .vh-live-table-wrap {
+  background: transparent !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
+  overflow: hidden !important;
+}
+
+tr .d-none, thead, #offline_message, .data-table {
+  display: none !important;
+}
+
+.vh-live-card {
+  width: 1024px !important;
+  height: 75px !important;
+  background: ${bg} !important;
+  border-radius: 0 !important;
+  box-sizing: border-box !important;
+  border: none !important;
+  box-shadow: none !important;
+  overflow: hidden !important;
+  padding: 0 0 0 ${padLeft} !important;
+  margin: 0 !important;
+  position: relative !important;
+  display: flex !important;
+  justify-content: center !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transition: opacity 1000ms ease !important;
+}
+
+.vh-live-card::before,
+.vh-live-card::after {
+  width: 22px !important;
+  height: 22px !important;
+  content: '' !important;
+  position: absolute !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  z-index: 10 !important;
+}
+
+.vh-live-card::before {
+  left: 14px !important;
+  background: url('https://assets.vtlog.net/images/logos/vtlog_default_256.png') no-repeat center / contain !important;
+}
+
+${logoRule}
+
+.vh-live-table-wrap {
+  flex: 1 1 0 !important;
+  min-width: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.vh-live-bar-block {
+  gap: 3px;
+}
+
+.vh-live-bar-h {
+  text-transform: capitalize !important;
+}
+
+i {
+  opacity: 1 !important;
+}
+
+#liveTable {
+  width: auto !important;
+}
+
+#list span {
+  font-size: 12px !important;
+  line-height: 12px !important;
+}
+
+#list tr {
+  display: flex;
+  align-items: center !important;
+}
+
+#list tr td {
+  margin: 0 !important;
+  border: 0 !important;
+  padding: 0px 25px 0px 0px !important;
+}
+
+tr.users:hover td {
+  background: transparent !important;
+}
+
+* {
+  color: #f1f1f1;
+}
+
+.label {
+  color: #c1c1c1 !important;
+}
+
+.val, .pct {
+  color: #f1f1f1 !important;
+}
+
+.vh-live-bar {
+  background: ${barTrack} !important;
+}
+
+.progress, .fuel {
+  background: ${barFill} !important;
+}${lightExtra}
+
+@media (max-width: 900px) {
+  .vh-live-table tr.users {
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: 0 !important;
+  }
+
+  .vh-live-table tr.users td[data-label]::before {
+    display: none !important;
+  }
+}
+
+td:nth-child(1) {
+  max-width: 130px !important;
+}
+
+td:nth-child(1) div {
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+[id$="td-damage"] > div {
+  white-space: nowrap !important;
+}
+
+[id$="td-cargo"] {
+  max-width: 130px !important;
+}
+
+[id$="td-cargo"] div {
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+td:nth-child(4) div {
+  width: 120px;
+  white-space: nowrap !important;
+}
+
+[id$="td-progress"] {
+  width: 250px !important;
+  min-width: 100px !important;
+  max-width: 300px !important;
+}
+
+[id$="td-progress"] .vh-live-bar-route {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 5px !important;
+  min-width: 0 !important;
+}
+
+[id$="td-progress"] .vh-live-bar-route > span:not(.arrow) {
+  text-transform: none !important;
+  min-width: 0 !important;
+  flex: 1 1 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+[id$="td-progress"] .vh-live-bar-route > .arrow {
+  flex-shrink: 0 !important;
+}
+
+[id$="td-progress"] .vh-live-bar-route > [id$="-destination"] {
+  text-align: right !important;
+}
+
+[id$="td-finance"] > div {
+  white-space: nowrap !important;
+}
+
+#list tr td:nth-child(7) {
+  padding-right: 0px !important;
+}
+
+#list tr td:nth-child(7) .vh-live-speed:not(.over) {
+  border-color: ${speedBorder};
+}
+
+#list tr td:nth-child(7) .vh-live-speed-val {
+  font-size: 16px !important;
+}
+
+#list tr td:nth-child(7) .vh-live-speed-limit {
+  font-size: 9px !important;
+}`;
+    }
+
     function buildBookmarklet() {
-      const raw = document.getElementById('steamInput').value.trim();
-      const m = raw.match(/^(?:https:\/\/)?vtlog\.net\/profile\/(7656119\d{10})$/) || raw.match(/^(7656119\d{10})$/);
+      const raw = document.getElementById('steamInput').value;
+      const steamId = parseSteamId(raw);
+      const logoRaw = document.getElementById('logoInput').value.trim();
+      const bgHex = document.getElementById('bgColor').value;
+      const opacity = parseFloat(document.getElementById('bgOpacity').value);
+
+      document.getElementById('bgColorLabel').textContent = bgHex;
+      document.getElementById('bgOpacityLabel').textContent = opacity;
+
+      const steamErr = document.getElementById('steamErr');
+      const steamOk = document.getElementById('steamOk');
+      if (raw.trim() && !steamId) {
+        steamErr.style.display = 'block';
+        steamOk.style.display = 'none';
+      } else if (steamId) {
+        steamErr.style.display = 'none';
+        steamOk.style.display = 'block';
+        steamOk.textContent = 'Steam ID64: ' + steamId;
+      } else {
+        steamErr.style.display = 'none';
+        steamOk.style.display = 'none';
+      }
+
       const link = document.getElementById('bookmarklet');
-      if (!m) {
+      if (!steamId) {
         link.classList.add('disabled');
         link.href = '#';
         return;
       }
       link.classList.remove('disabled');
-      const STEAM_ID = m[1];
-      const BG = document.getElementById('bgColor').value;
-      const r = parseInt(BG.slice(1, 3), 16), g = parseInt(BG.slice(3, 5), 16), b = parseInt(BG.slice(5, 7), 16);
-      const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-      const FG = lum > 0.5 ? '#000' : '#fff';
 
-      const code = `javascript:void((async()=>{
-        const STEAM_ID='${STEAM_ID}';
+      const pipCss = buildPipCss(steamId, bgHex, opacity, logoRaw);
+
+      const payload = `(async()=>{
+        const STEAM_ID='__STEAM_ID__';
         const TID='user-'+STEAM_ID;
         const row=document.getElementById(TID);
         if(!row){alert('Row #'+TID+' not found on this page.');return}
 
-        /* Open PiP window */
         let pip;
         try{pip=await documentPictureInPicture.requestWindow({width:1024,height:95})}
         catch(e){alert('PiP failed: '+e.message);return}
 
-        /* Copy existing page stylesheets (fonts, icons, dark theme, etc.) */
         for(const s of document.styleSheets){
           try{
             const css=[...s.cssRules].map(r=>r.cssText).join('\\n');
@@ -177,88 +508,135 @@
           }catch(e){
             if(s.href){
               const l=pip.document.createElement('link');
-              l.rel='stylesheet';l.href=s.href;
+              l.rel='stylesheet';
+              l.href=s.href;
               pip.document.head.appendChild(l);
             }
           }
         }
 
-        /* Inject overlay CSS */
+        const pipCss=__PIP_CSS__;
         const ov=pip.document.createElement('style');
-        ov.textContent='*{margin:0;padding:0;box-sizing:border-box}'
-          +'${lum > 0.5 ? "td:not(:last-child) *{color:#000!important}" : ""}'
-          +'html,body{background:transparent;overflow:hidden;width:1024px;height:75px}'
-          +'thead,.d-none{display:none!important}'
-          +'.card{width:1024px;height:75px;box-sizing:border-box;background:${BG};'
-          +'border:none;box-shadow:none;overflow:hidden;border-radius:0;'
-          +'padding:0 0 0 50px;margin:0;position:relative;display:flex;justify-content:center}'
-          +'.card::before{content:\\\"\\\";position:absolute;left:14px;top:50%;transform:translateY(-50%);'
-          +'width:22px;height:22px;background:url(https://assets.vtlog.net/images/logos/vtlog_default_256.png) no-repeat center/contain;z-index:10${lum > 0.5 ? ";filter:brightness(0)" : ""}}'
-          +'.responsive{width:100%}'
-          +'#liveTable{width:100%;border-collapse:collapse}'
-          +'#list tr{display:flex;align-items:center;justify-content:center}'
-          +'#list tr td{margin:0;padding-left:0;padding-right:25px}'
-          +'#list tr td:nth-child(8){padding-right:14px}'
-          +'td{border:none}'
-          +'td:nth-child(1){max-width:130px}'
-          +'td:nth-child(1) div{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
-          +'[id$=td-damage]>div{white-space:nowrap}'
-          +'[id$=td-cargo]{max-width:130px}'
-          +'[id$=td-cargo] div{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
-          +'td:nth-child(4) div{max-width:120px;white-space:nowrap}'
-          +'[id$=td-progress]{width:250px;min-width:100px;max-width:300px}'
-          +'[id$=td-progress]>div:not(.progress){display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0}'
-          +'[id$=td-progress]>div:not(.progress)>span{min-width:0;flex:1 1 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
-          +'[id$=td-progress]>div:not(.progress)>.float-end,[id$=td-progress]>span{text-align:right}'
-          +'[id$=td-finance]>div{white-space:nowrap}'
-          +'[id$=td-rate]{white-space:nowrap}';
+        ov.textContent=pipCss;
         pip.document.head.appendChild(ov);
 
-        /* Build minimal DOM: body > .card > .responsive > table#liveTable > tbody#list > tr */
         const d=pip.document;
         d.body.style.cssText='margin:0;overflow:hidden;background:transparent';
-        const card=d.createElement('div');card.className='card';
-        const resp=d.createElement('div');resp.className='responsive';
-        const table=d.createElement('table');table.className='table vtlog-table';table.id='liveTable';
-        const tbody=d.createElement('tbody');tbody.id='list';
+
+        const wrap=d.createElement('div');
+        wrap.className='vh-live-wrap';
+
+        const card=d.createElement('div');
+        card.className='vh-live-card';
+
+        const tableWrap=d.createElement('div');
+        tableWrap.className='vh-live-table-wrap';
+
+        const table=d.createElement('table');
+        table.className='vh-live-table';
+        table.id='liveTable';
+
+        const tbody=d.createElement('tbody');
+        tbody.id='list';
 
         table.appendChild(tbody);
-        resp.appendChild(table);
-        card.appendChild(resp);
-        d.body.appendChild(card);
+        tableWrap.appendChild(table);
+        card.appendChild(tableWrap);
+        wrap.appendChild(card);
+        d.body.appendChild(wrap);
 
-        /* Initial clone */
-        tbody.appendChild(row.cloneNode(true));
+        function upsertRateLine(){
+          const tr=tbody.querySelector('tr');
+          if(!tr)return;
 
-        /* Compute income/km and append as extra column */
-        function addRateCol(){var tr=tbody.querySelector('tr');if(!tr)return;var incEl=tr.querySelector('[id$=-income]');var distEl=tr.querySelector('[id$=-progressDistance]');var finTd=tr.querySelector('[id$=td-finance]');if(!incEl||!distEl||!finTd)return;var progDiv=tr.querySelector('[id$=td-progress]');var hidden=progDiv&&progDiv.classList.contains('d-none');var td=finTd.closest('td');if(!td)return;var existing=td.nextElementSibling;var hasRate=existing&&existing.querySelector('[id$=td-rate]');if(hidden){if(hasRate)existing.remove();return}var inc=parseFloat(incEl.textContent.replace(/[^0-9.]/g,''))||0;var m=distEl.textContent.match(/([\\d\\s]+)\\s*\\x2f/);var driven=m?parseFloat(m[1].replace(/\\s/g,'')):0;var rate=(driven>0&&isFinite(inc))?inc/driven:0;if(!isFinite(rate))rate=0;if(!hasRate){var c=d.createElement('td');c.innerHTML='<div id="'+STEAM_ID+'-td-rate"><div><i class=\\"fa-solid fa-florin-sign\\"></i> <span class=\\"text-info\\">'+rate.toFixed(3)+'</span></div><div><span class=\\"text-info\\">per km</span></div></div>';td.after(c)}else{var s=existing.querySelector('[id$=td-rate] span');if(s)s.textContent=rate.toFixed(3)}}
-        addRateCol();
+          const incEl=tr.querySelector('[id$=-income]');
+          const distEl=tr.querySelector('[id$=-progressDistance]');
+          const fin=tr.querySelector('[id$=td-finance]');
+          const progDiv=tr.querySelector('[id$=td-progress]');
+          if(!incEl||!distEl||!fin)return;
 
-        /* Sync: re-clone the row every 100ms so all live updates are captured */
-        var gone=0;
+          const hidden=progDiv&&progDiv.classList.contains('d-none');
+          const existing=fin.querySelector('[id$=-rate]');
+          if(hidden){
+            if(existing){
+              const line=existing.closest('.line');
+              if(line)line.remove();
+            }
+            return;
+          }
+
+          const income=parseFloat((incEl.textContent||'').replace(/[^0-9.]/g,''))||0;
+          const m=(distEl.textContent||'').match(/([\\d\\s,.]+)\\s*\\//);
+          const driven=m?parseFloat(m[1].replace(/[\\s,]/g,'')):0;
+          let rate=(driven>0&&isFinite(income))?income/driven:0;
+          if(!isFinite(rate))rate=0;
+
+          if(existing){
+            existing.textContent=rate.toFixed(3);
+            return;
+          }
+
+          const line=d.createElement('div');
+          line.className='line';
+
+          const i=d.createElement('i');
+          i.className='fa-solid fa-florin-sign';
+
+          const s=d.createElement('span');
+          s.id=STEAM_ID+'-rate';
+          s.className='text-info';
+          s.textContent=rate.toFixed(3);
+
+          line.appendChild(i);
+          line.appendChild(s);
+          fin.appendChild(line);
+        }
+
+        function syncRow(){
+          const live=document.getElementById(TID);
+          if(!live)return false;
+          tbody.innerHTML='';
+          tbody.appendChild(live.cloneNode(true));
+          upsertRateLine();
+          return true;
+        }
+
+        syncRow();
+
+        let gone=0;
         const iv=setInterval(()=>{
           try{
             if(!pip||pip.closed){clearInterval(iv);return}
             const live=document.getElementById(TID);
-            if(!live){gone+=100;if(gone>=15000){clearInterval(iv);pip.close()}return}
+            if(!live){
+              gone+=100;
+              if(gone>=15000){clearInterval(iv);pip.close()}
+              return;
+            }
             gone=0;
-            tbody.innerHTML='';
-            tbody.appendChild(live.cloneNode(true));
-            addRateCol();
+            syncRow();
           }catch(e){clearInterval(iv)}
         },100);
 
         pip.addEventListener('pagehide',()=>clearInterval(iv));
-      })())`;
+      })()`;
 
-      link.href = code.replace(/\n\s*/g, '');
+      const resolvedPayload = payload
+        .replace('__STEAM_ID__', steamId)
+        .replace('__PIP_CSS__', JSON.stringify(pipCss));
+
+      link.href = 'javascript:void(' + resolvedPayload.replace(/\n\s*/g, '') + ')';
     }
 
-    // Build on load and on input change
     buildBookmarklet();
     document.getElementById('steamInput').addEventListener('input', buildBookmarklet);
+    document.getElementById('logoInput').addEventListener('input', buildBookmarklet);
     document.getElementById('bgColor').addEventListener('input', function () {
       document.getElementById('bgColorLabel').textContent = this.value;
+      buildBookmarklet();
+    });
+    document.getElementById('bgOpacity').addEventListener('input', function () {
+      document.getElementById('bgOpacityLabel').textContent = this.value;
       buildBookmarklet();
     });
   </script>
@@ -268,17 +646,18 @@
     <li>Navigate to your VTLOG company live drivers page.</li>
     <li>Click the <strong>VTLOG Live PiP</strong> bookmark.</li>
     <li>A 1024&times;75 floating PiP window appears with your driver row.</li>
-    <li>Live data syncs every second. Close the PiP window to stop.</li>
-    <li>Repeat the process if there's a version update and Steam ID or background color change.</li>
+    <li>Live data syncs every 100ms. Close the PiP window to stop.</li>
+    <li>Rebuild and re-drag the bookmark if you change Steam ID, logo, or colors.</li>
   </ol>
 
   <div class="note">
     <strong>Requirements:</strong>
-    <br>• Chrome 116+ with Document Picture-in-Picture API. 
+    <br>• Chrome 116+ with Document Picture-in-Picture API.
     <br>• VTLOG account profile link or Steam ID.
   </div>
 
-  <a style="font-size: 0.8em; text-align: right; display: block;" href="https://vtlog.net/profile/76561198123484666" target="_blank"><i>Made by [TPH] John</i></a>
+  <a style="font-size: 0.8em; text-align: right; display: block;" href="https://vtlog.net/profile/76561198123484666"
+    target="_blank"><i>Made by [TPH] John</i></a>
 
 </body>
 
